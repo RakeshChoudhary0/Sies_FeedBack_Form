@@ -86,7 +86,7 @@ async def admin_logout():
     return response
 
 # DASHBOARD
-@router.get("/dashboard", response_class=HTMLResponse)  
+@router.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(
     request: Request,
     stakeholder_id: int | None = None,
@@ -94,6 +94,9 @@ async def admin_dashboard(
     db: Session = Depends(get_db),
     _: None = Depends(admin_required)
 ):
+    settings = db.query(models.SystemSettings).first()
+    form_active = settings.is_active if settings else True
+
     # -----------------------------
     # SIDEBAR STAKEHOLDERS
     # -----------------------------
@@ -158,6 +161,7 @@ async def admin_dashboard(
             for r in raw_results
         ]
 
+
         return templates.TemplateResponse(
             "admin_dashboard.html",
             {
@@ -166,7 +170,8 @@ async def admin_dashboard(
                 "results": results,
                 "total_feedback": total_feedback,
                 "stakeholders": stakeholders,
-                "selected_stakeholder": None
+                "selected_stakeholder": None,
+                "form_active": form_active,
             }
         )
 
@@ -265,27 +270,47 @@ async def admin_dashboard(
 
         demo_qid_to_key[q.id] = key
 
+    # SUGGESTIONS
+
+    suggestion_questions = (
+        db.query(models.SyllabusQuestion)
+        .filter(
+            models.SyllabusQuestion.category == "SUGGESTION",
+            models.SyllabusQuestion.stakeholder_type == stakeholder.stakeholder_type
+        )
+        .all()
+    )
+
+    suggestion_qids = [q.id for q in suggestion_questions]
+
     # -----------------------------
-    # STREAM OPTIONS (COURSE)
+    # STREAM OPTIONS (FIXED)
+    # -----------------------------
+    stream_qids = [
+        q.id for q in demographic_questions
+        if any(x in q.text.lower() for x in ["course", "program", "stream"])
+    ]
+
+    # -----------------------------
+    # STREAM OPTIONS
     # -----------------------------
     stream_options = (
         db.query(models.FeedbackAnswer.answer_text)
-        .join(models.SyllabusQuestion)
         .join(models.StakeholderPersonalInfo)
         .filter(
-            models.SyllabusQuestion.category == "DEMOGRAPHIC",
-            models.SyllabusQuestion.text.ilike("%course%"),
+            models.FeedbackAnswer.question_id.in_(stream_qids),
             models.StakeholderPersonalInfo.stakeholder_id == stakeholder_id
         )
         .distinct()
         .all()
     )
-    stream_options = [s[0] for s in stream_options]
+
+    stream_options = sorted([s[0] for s in stream_options if s[0]])
 
     # -----------------------------
-    # FETCH ALL ANSWERS
+    # FETCH ANSWERS
     # -----------------------------
-    answers_query = (
+    answers = (
         db.query(
             models.StakeholderPersonalInfo.person_id,
             models.StakeholderPersonalInfo.name,
@@ -294,18 +319,14 @@ async def admin_dashboard(
         )
         .join(models.FeedbackAnswer)
         .filter(models.StakeholderPersonalInfo.stakeholder_id == stakeholder_id)
-        .order_by(
-            models.StakeholderPersonalInfo.person_id,
-            models.FeedbackAnswer.question_id
-        )
+        .all()
     )
-
-    answers = answers_query.all()
 
     # -----------------------------
     # PIVOT TABLE
     # -----------------------------
     row_map = {}
+    person_stream_map = {}
 
     for r in answers:
         row = row_map.setdefault(r.person_id, {
@@ -313,29 +334,48 @@ async def admin_dashboard(
             "name": r.name
         })
 
-        # DEMOGRAPHIC
         if r.question_id in demo_qid_to_key:
-            row[demo_qid_to_key[r.question_id]] = r.answer_text
+            key = demo_qid_to_key[r.question_id]
+            row[key] = r.answer_text
 
-        # SYLLABUS
+            if r.question_id in stream_qids:
+                person_stream_map[r.person_id] = r.answer_text
+
         if r.question_id in qid_to_qnum:
             row[qid_to_qnum[r.question_id]] = r.answer_text
+
+        if r.question_id in suggestion_qids:
+            row["suggestion"] = r.answer_text
 
     responses_table = list(row_map.values())
 
     # -----------------------------
-    # APPLY STREAM FILTER (FIXED)
+    # FIND STREAM QUESTION IDS
     # -----------------------------
-    if stream:
-        def matches_stream(row):
-            for k, v in row.items():
-                if "course" in k or "program" in k or "stream" in k:
-                    return v == stream
-            return False
+    stream_question_ids = [
+        q.id for q in demographic_questions
+        if any(word in q.text.lower() for word in ["course", "program", "stream"])
+    ]
 
+    person_stream_map = {}
+
+    stream_answers = (
+        db.query(
+            models.FeedbackAnswer.person_id,
+            models.FeedbackAnswer.answer_text,
+            models.FeedbackAnswer.question_id
+        )
+        .filter(models.FeedbackAnswer.question_id.in_(stream_question_ids))
+        .all()
+    )
+
+    for s in stream_answers:
+        person_stream_map[s.person_id] = s.answer_text
+
+    if stream:
         responses_table = [
             r for r in responses_table
-            if matches_stream(r)
+            if person_stream_map.get(r["person_id"]) == stream
         ]
 
     return templates.TemplateResponse(
@@ -353,6 +393,7 @@ async def admin_dashboard(
             "stakeholders": stakeholders,
             "selected_stakeholder": stakeholder_id,
             "demographic_headers": demographic_headers,
+            "form_active": form_active,
         }
     )
 
@@ -464,7 +505,7 @@ def export_stakeholder_csv(
     for a in answers:
         row = rows.setdefault(a.person_id, {
             "person_id": a.person_id,
-            "name": a.name
+            "name": a.name,
         })
 
         if a.question_id in demo_qid_to_key:
@@ -583,4 +624,16 @@ def export_all_csv(db: Session = Depends(get_db)):
         }
     )
 
+@router.post("/toggle-forms")
+def toggle_forms(db: Session = Depends(get_db)):
+    settings = db.query(models.SystemSettings).first()
 
+    if not settings:
+        settings = models.SystemSettings(id=1, is_active=False)
+        db.add(settings)
+    else:
+        settings.is_active = not settings.is_active
+
+    db.commit()
+
+    return {"status": settings.is_active}

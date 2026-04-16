@@ -4,9 +4,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 import models
 from database import SessionLocal
+from datetime import datetime
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["now"] = datetime.now
 
 def get_db():
     db = SessionLocal()
@@ -67,6 +69,43 @@ async def submit_feedback(
     request: Request,
     db: Session = Depends(get_db)
 ):
+    settings = db.query(models.SystemSettings).first()
+
+    if not settings or not settings.is_active:
+        return HTMLResponse(
+            content="""
+            <html>
+            <head>
+                <title>Forms Closed</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+            </head>
+            <body class="bg-gray-100 flex items-center justify-center h-screen">
+
+                <div class="bg-white p-8 rounded-xl shadow-md text-center max-w-md">
+
+                    <h1 class="text-2xl font-bold text-red-600 mb-4">
+                        Feedback Forms Closed
+                    </h1>
+
+                    <p class="text-gray-600 mb-6">
+                        Submissions are currently disabled by the administrator.
+                        Please try again later.
+                    </p>
+
+                    <a href="/" 
+                       class="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition">
+                        Go Back
+                    </a>
+
+                </div>
+
+            </body>
+            </html>
+            """,
+            status_code=403
+        )
+
+
     form = await request.form()
 
     # 1️⃣ Get or create feedback session

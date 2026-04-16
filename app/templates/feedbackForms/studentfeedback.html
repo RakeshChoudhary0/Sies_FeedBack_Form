@@ -83,18 +83,22 @@
 
   <!-- ACADEMIC YEAR -->
   <div class="flex gap-4 flex-wrap">
-    {% for option in ["2023–24", "2024–25", "2025–26", "2026–27"] %}
+  {% set current_year = now().year %}
+  {% for y in range(current_year - 2, current_year + 1) %}
+    {% set next_y = y + 1 %}
+    {% set label = y ~ "–" ~ (next_y|string)[-2:] %}
+
     <label class="flex items-center gap-2">
       <input
         type="radio"
         name="q_{{ q.id }}"
-        value="{{ option }}"
+        value="{{ label }}"
         required
       >
-      {{ option }}
+      {{ label }}
     </label>
-    {% endfor %}
-  </div>
+  {% endfor %}
+</div>
 
 {% elif "class" in text_lower
       or "fy" in text_lower

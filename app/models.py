@@ -51,3 +51,9 @@ class FeedbackAnswer(Base):
     person_id = Column(Integer, ForeignKey("stakeholder_personal_info.person_id"), nullable=False)
     question_id = Column(Integer, ForeignKey("syllabus_question.id"), nullable=False)
     answer_text = Column(String(255), nullable=False)
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True)
+    is_active = Column(Boolean, default=True)

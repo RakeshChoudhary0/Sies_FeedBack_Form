@@ -10,16 +10,44 @@
 <body class="bg-gray-100 flex flex-col">
 
 <!-- TOP NAV -->
-<nav class="bg-gradient-to-r from-blue-600 to-blue-400 text-white p-4 shadow-lg flex items-center justify-between">
-  <h1 class="text-2xl font-bold">Feedback Admin Panel</h1>
+<<!-- TOP NAV -->
+<nav class="bg-gradient-to-r from-blue-600 to-blue-400 text-white px-6 py-4 shadow-lg flex items-center justify-between">
 
-  <!--  Logout Button -->
-        <a href="/admin/logout" class="bg-white text-blue-600 px-4 py-2 rounded-md font-semibold
-              hover:bg-blue-100 transition">
-            Logout
-        </a>
+  <!-- LEFT: TITLE -->
+  <h1 class="text-2xl font-bold tracking-wide">
+    Feedback Admin Panel
+  </h1>
+
+  <!-- RIGHT: STATUS + ACTIONS -->
+  <div class="flex items-center gap-4">
+
+    <!-- FORM STATUS -->
+    <div class="flex items-center gap-2 bg-white/20 px-3 py-1 rounded-lg backdrop-blur-sm">
+      <span class="text-sm">Forms:</span>
+      <span class="font-semibold {{ 'text-green-200' if form_active else 'text-red-200' }}">
+        {{ "OPEN" if form_active else "CLOSED" }}
+      </span>
+    </div>
+
+    <!-- TOGGLE BUTTON -->
+    <button
+      onclick="toggleForms()"
+      class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-semibold transition"
+    >
+      Toggle
+    </button>
+
+    <!-- LOGOUT -->
+    <a
+      href="/admin/logout"
+      class="bg-white text-blue-600 px-4 py-2 rounded-md font-semibold hover:bg-blue-100 transition"
+    >
+      Logout
+    </a>
+
+  </div>
+
 </nav>
-
 <div class="flex flex-1">
 
   <!-- SIDEBAR -->
@@ -182,6 +210,8 @@
             {% for q in question_numbers %}
             <th class="px-3 py-2 text-center">{{ q }}</th>
             {% endfor %}
+
+            <th class="py-2 px-3 bg-green-100">Suggestions</th>
           </tr>
         </thead>
 
@@ -211,6 +241,12 @@
               {{ row[q] if q in row else "-" }}
             </td>
             {% endfor %}
+
+
+              <td class="py-2 px-3 text-gray-700 max-w-xs">
+  {{ row.suggestion if row.suggestion else "-" }}
+</td>
+              <td class="py-2 px-3 max-w-xs overflow-auto text-sm text-gray-700">
 
           </tr>
           {% endfor %}
@@ -271,6 +307,22 @@ async function saveDemographicEdits() {
   });
 
   alert(res.ok ? "Saved successfully" : "Save failed");
+}
+</script>
+
+<!-- FORM TOGGLE SCRIPT  -->
+
+<script>
+async function toggleForms() {
+  const res = await fetch("/admin/toggle-forms", {
+    method: "POST"
+  });
+
+  const data = await res.json();
+
+  alert(data.status ? "Forms are now OPEN" : "Forms are now CLOSED");
+
+  location.reload()
 }
 </script>
 
