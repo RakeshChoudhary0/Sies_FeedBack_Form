@@ -14,8 +14,10 @@ except ImportError:
 from jose import JWTError
 import re, csv, io
 
+from pathlib import Path
 router = APIRouter(prefix="/admin") 
-templates = Jinja2Templates(directory="app/templates")
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # DB DEPENDENCY
 def get_db():
