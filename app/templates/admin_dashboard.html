@@ -3,6 +3,9 @@
 <head>
     <title>Admin Dashboard</title>
     <link rel="icon" type="image/png" href="../static/images/logo_50x50.png">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -10,7 +13,6 @@
 <body class="bg-gray-100 flex flex-col">
 
 <!-- TOP NAV -->
-<<!-- TOP NAV -->
 <nav class="bg-gradient-to-r from-blue-600 to-blue-400 text-white px-6 py-4 shadow-lg flex items-center justify-between">
 
   <!-- LEFT: TITLE -->
@@ -136,28 +138,34 @@
 
     </div>
 
-    {% if selected_stakeholder %}
-
-                  <!-- EXPORT BUTTONS WRAPPER -->
+    {% if not selected_stakeholder %}
     <div class="flex items-center justify-between mb-4">
-
-      <!-- STAKEHOLDER CSV EXPORT -->
-      {% if selected_stakeholder %}
       <a
-        href="/admin/export/stakeholder?stakeholder_id={{ selected_stakeholder }}{% if selected_stream %}&stream={{ selected_stream }}{% endif %}"
-        class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
+        href="/admin/export/all"
+        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
       >
-        Export CSV (This Stakeholder)
+        Export CSV (All Stakeholders)
       </a>
-      {% endif %}
-        <!-- ALL STAKEHOLDER CSV EXPORT -->
-        <a
-            href="/admin/export/all"
-            class="bg-green-400 text-black px-4 py-2 rounded hover:bg-green-600 text-sm"
-          >
-            Export CSV (All)
-          </a>
+    </div>
+    {% endif %}
 
+    {% if selected_stakeholder %}
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <a
+          href="/admin/export/stakeholder?stakeholder_id={{ selected_stakeholder }}{% if selected_stream %}&stream={{ selected_stream | urlencode }}{% endif %}"
+          class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-semibold"
+        >
+          Export CSV ({% if selected_stream %}{{ selected_stream }}{% else %}This Stakeholder{% endif %})
+        </a>
+
+        <a
+          href="/admin/export/all"
+          class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
+        >
+          Export CSV (All Stakeholders)
+        </a>
+      </div>
     </div>
 
     <!-- FILTER + SAVE BAR (FIXED) -->
@@ -243,11 +251,9 @@
             {% endfor %}
 
 
-              <td class="py-2 px-3 text-gray-700 max-w-xs">
-  {{ row.suggestion if row.suggestion else "-" }}
-</td>
-              <td class="py-2 px-3 max-w-xs overflow-auto text-sm text-gray-700">
-
+            <td class="py-2 px-3 text-gray-700 max-w-xs">
+              {{ row.suggestion if row.suggestion else "-" }}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -322,8 +328,14 @@ async function toggleForms() {
 
   alert(data.status ? "Forms are now OPEN" : "Forms are now CLOSED");
 
-  location.reload()
+  location.reload();
 }
+
+window.addEventListener("pageshow", function(event) {
+  if (event.persisted || (window.performance && window.performance.navigation && window.performance.navigation.type === 2)) {
+    window.location.reload();
+  }
+});
 </script>
 
 </body>

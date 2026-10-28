@@ -2,8 +2,12 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-import models
-from database import SessionLocal
+try:
+    import models
+    from database import SessionLocal
+except ImportError:
+    from app import models
+    from app.database import SessionLocal
 from datetime import datetime
 
 router = APIRouter()
@@ -20,11 +24,39 @@ def get_db():
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     # This serves your landing page as the home page
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 @router.get("/select-category", response_class=HTMLResponse)
 async def select_category(request: Request):
-    return templates.TemplateResponse("categoryselection.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="categoryselection.html")
+
+def forms_closed_response():
+    return HTMLResponse(
+        content="""
+        <html>
+        <head>
+            <title>Forms Closed</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-100 flex items-center justify-center h-screen">
+            <div class="bg-white p-8 rounded-xl shadow-md text-center max-w-md">
+                <h1 class="text-2xl font-bold text-red-600 mb-4">
+                    Feedback Forms Closed
+                </h1>
+                <p class="text-gray-600 mb-6">
+                    Submissions are currently disabled by the administrator.
+                    Please try again later.
+                </p>
+                <a href="/" 
+                   class="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition">
+                    Go Back
+                </a>
+            </div>
+        </body>
+        </html>
+        """,
+        status_code=403
+    )
 
 @router.get("/feedback/{form_name}", response_class=HTMLResponse)
 async def get_form(
@@ -32,6 +64,10 @@ async def get_form(
     form_name: str,
     db: Session = Depends(get_db)
 ):
+    settings = db.query(models.SystemSettings).first()
+    if settings and not settings.is_active:
+        return forms_closed_response()
+
     # Map form names to stakeholder_type values
     stakeholder_map = {
         "studentfeedback": "STUDENT",
@@ -56,9 +92,9 @@ async def get_form(
     )
 
     return templates.TemplateResponse(
-        f"feedbackForms/{form_name}.html",
-        {
-            "request": request,
+        request=request,
+        name=f"feedbackForms/{form_name}.html",
+        context={
             "questions": questions,
             "form_name": form_name
         }
@@ -71,39 +107,8 @@ async def submit_feedback(
 ):
     settings = db.query(models.SystemSettings).first()
 
-    if not settings or not settings.is_active:
-        return HTMLResponse(
-            content="""
-            <html>
-            <head>
-                <title>Forms Closed</title>
-                <script src="https://cdn.tailwindcss.com"></script>
-            </head>
-            <body class="bg-gray-100 flex items-center justify-center h-screen">
-
-                <div class="bg-white p-8 rounded-xl shadow-md text-center max-w-md">
-
-                    <h1 class="text-2xl font-bold text-red-600 mb-4">
-                        Feedback Forms Closed
-                    </h1>
-
-                    <p class="text-gray-600 mb-6">
-                        Submissions are currently disabled by the administrator.
-                        Please try again later.
-                    </p>
-
-                    <a href="/" 
-                       class="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition">
-                        Go Back
-                    </a>
-
-                </div>
-
-            </body>
-            </html>
-            """,
-            status_code=403
-        )
+    if settings and not settings.is_active:
+        return forms_closed_response()
 
 
     form = await request.form()
@@ -181,4 +186,4 @@ async def submit_feedback(
 
 @router.get("/submitted-feedback", response_class=HTMLResponse)
 async def submit_conf(request: Request):
-    return templates.TemplateResponse("thankyou.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="thankyou.html")

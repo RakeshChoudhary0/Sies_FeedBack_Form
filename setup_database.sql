@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS syllabus_question;
 DROP TABLE IF EXISTS admin_user;
 DROP TABLE IF EXISTS feedback_session;
 DROP TABLE IF EXISTS stakeholders;
+DROP TABLE IF EXISTS system_settings;
 
 
 CREATE TABLE stakeholders (
@@ -59,6 +60,14 @@ CREATE TABLE feedback_answers (
     FOREIGN KEY (person_id) REFERENCES stakeholder_personal_info(person_id),
     FOREIGN KEY (question_id) REFERENCES syllabus_question(id)
 );
+
+
+CREATE TABLE system_settings (
+    id INT PRIMARY KEY,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+INSERT INTO system_settings (id, is_active) VALUES (1, TRUE);
 
 
 -- ================= TEACHER =================

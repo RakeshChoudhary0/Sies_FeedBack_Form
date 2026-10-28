@@ -3,10 +3,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Integer
-import models
-from database import SessionLocal
+try:
+    import models
+    from database import SessionLocal
+    from auth import verify_password, create_access_token, decode_access_token
+except ImportError:
+    from app import models
+    from app.database import SessionLocal
+    from app.auth import verify_password, create_access_token, decode_access_token
 from jose import JWTError
-from auth import verify_password, create_access_token, decode_access_token
 import re, csv, io
 
 router = APIRouter(prefix="/admin") 
@@ -37,7 +42,7 @@ def admin_required(request: Request):
 # Admin login
 @router.get("/login", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="admin_login.html")
 
 # LOGIN ACTION (JWT)
 @router.post("/login")
@@ -53,11 +58,9 @@ async def admin_login(
 
     if not admin or not verify_password(password, admin.password):
         return templates.TemplateResponse(
-            "admin_login.html",
-            {
-                "request": request,
-                "error": "Invalid username or password"
-            },
+            request=request,
+            name="admin_login.html",
+            context={"error": "Invalid username or password"},
             status_code=401
         )
 
@@ -78,11 +81,13 @@ async def admin_login(
 
     return response
 
-# LOGOUT
 @router.get("/logout")
 async def admin_logout():
-    response = RedirectResponse("/admin/login")
-    response.delete_cookie("access_token")
+    response = RedirectResponse("/admin/login", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(key="access_token", path="/")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     return response
 
 # DASHBOARD
@@ -162,10 +167,10 @@ async def admin_dashboard(
         ]
 
 
-        return templates.TemplateResponse(
-            "admin_dashboard.html",
-            {
-                "request": request,
+        response = templates.TemplateResponse(
+            request=request,
+            name="admin_dashboard.html",
+            context={
                 "mode": "ALL",
                 "results": results,
                 "total_feedback": total_feedback,
@@ -174,6 +179,10 @@ async def admin_dashboard(
                 "form_active": form_active,
             }
         )
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     # =========================================================
     # CASE 2: SINGLE STAKEHOLDER
@@ -372,23 +381,25 @@ async def admin_dashboard(
     for s in stream_answers:
         person_stream_map[s.person_id] = s.answer_text
 
-    if stream:
+    if stream and stream.strip():
+        target_stream = stream.strip()
         responses_table = [
             r for r in responses_table
-            if person_stream_map.get(r["person_id"]) == stream
+            if person_stream_map.get(r["person_id"], "").strip() == target_stream
         ]
+        total_feedback = len(responses_table)
 
-    return templates.TemplateResponse(
-        "admin_dashboard.html",
-        {
-            "request": request,
+    response = templates.TemplateResponse(
+        request=request,
+        name="admin_dashboard.html",
+        context={
             "mode": "SINGLE",
             "results": results,
             "questions": syllabus_questions,
             "question_numbers": question_numbers,
             "responses_table": responses_table,
             "stream_options": stream_options,
-            "selected_stream": stream,
+            "selected_stream": stream.strip() if stream else None,
             "total_feedback": total_feedback,
             "stakeholders": stakeholders,
             "selected_stakeholder": stakeholder_id,
@@ -396,12 +407,17 @@ async def admin_dashboard(
             "form_active": form_active,
         }
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.post("/update-responses")
 async def update_demographic_responses(
     updates: list[dict],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(admin_required)
 ):
     for item in updates:
         person_id = item["person_id"]
@@ -434,7 +450,8 @@ async def update_demographic_responses(
 def export_stakeholder_csv(
     stakeholder_id: int,
     stream: str | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(admin_required)
 ):
     stakeholder = db.query(models.Stakeholder).filter(
         models.Stakeholder.stakeholder_id == stakeholder_id
@@ -482,6 +499,27 @@ def export_stakeholder_csv(
     syllabus_headers = list(qid_to_qnum.values())
 
     # -----------------------------
+    # SUGGESTION QUESTIONS
+    # -----------------------------
+    suggestion_questions = (
+        db.query(models.SyllabusQuestion)
+        .filter(
+            models.SyllabusQuestion.category == "SUGGESTION",
+            models.SyllabusQuestion.stakeholder_type == stakeholder.stakeholder_type
+        )
+        .all()
+    )
+    suggestion_qids = [q.id for q in suggestion_questions]
+
+    # -----------------------------
+    # STREAM QUESTION IDS
+    # -----------------------------
+    stream_qids = [
+        q.id for q in demographic_questions
+        if any(x in q.text.lower() for x in ["course", "program", "stream"])
+    ]
+
+    # -----------------------------
     # FETCH ANSWERS
     # -----------------------------
     answers = (
@@ -501,6 +539,7 @@ def export_stakeholder_csv(
     )
 
     rows = {}
+    person_stream_map = {}
 
     for a in answers:
         row = rows.setdefault(a.person_id, {
@@ -510,23 +549,30 @@ def export_stakeholder_csv(
 
         if a.question_id in demo_qid_to_key:
             row[demo_qid_to_key[a.question_id]] = a.answer_text
+            if a.question_id in stream_qids:
+                person_stream_map[a.person_id] = a.answer_text
 
         if a.question_id in qid_to_qnum:
             row[qid_to_qnum[a.question_id]] = a.answer_text
+
+        if a.question_id in suggestion_qids:
+            row["suggestion"] = a.answer_text
 
     data = list(rows.values())
 
     # -----------------------------
     # STREAM FILTER
     # -----------------------------
-    if stream:
-        def match_stream(row):
-            for k, v in row.items():
-                if "course" in k or "program" in k or "stream" in k:
-                    return v == stream
-            return False
-
-        data = [r for r in data if match_stream(r)]
+    if stream and stream.strip():
+        target_stream = stream.strip()
+        data = [
+            r for r in data
+            if person_stream_map.get(r["person_id"], "").strip() == target_stream
+        ]
+        safe_stream = re.sub(r'[^a-zA-Z0-9_-]', '_', target_stream)
+        filename = f"{stakeholder.stakeholder_type}_{safe_stream}_responses.csv"
+    else:
+        filename = f"{stakeholder.stakeholder_type}_responses.csv"
 
     # -----------------------------
     # CSV BUILD
@@ -534,7 +580,7 @@ def export_stakeholder_csv(
     output = io.StringIO()
     writer = csv.writer(output)
 
-    header = ["Person ID", "Name"] + demo_headers + syllabus_headers
+    header = ["Person ID", "Name"] + demo_headers + syllabus_headers + ["Suggestions"]
     writer.writerow(header)
 
     for r in data:
@@ -546,23 +592,26 @@ def export_stakeholder_csv(
             row.append(r.get(q, ""))
         for q in syllabus_headers:
             row.append(r.get(q, ""))
+        row.append(r.get("suggestion", ""))
         writer.writerow(row)
 
     output.seek(0)
-
-    filename = f"{stakeholder.stakeholder_type}_responses.csv"
 
     return StreamingResponse(
         output,
         media_type="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename={filename}"
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         }
     )
 
 
 @router.get("/export/all")
-def export_all_csv(db: Session = Depends(get_db)):
+def export_all_csv(
+    db: Session = Depends(get_db),
+    _: None = Depends(admin_required)
+):
     output = io.StringIO()
     writer = csv.writer(output)
 
@@ -620,12 +669,16 @@ def export_all_csv(db: Session = Depends(get_db)):
         output,
         media_type="text/csv",
         headers={
-            "Content-Disposition": "attachment; filename=all_stakeholders_responses.csv"
+            "Content-Disposition": "attachment; filename=all_stakeholders_responses.csv",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         }
     )
 
 @router.post("/toggle-forms")
-def toggle_forms(db: Session = Depends(get_db)):
+def toggle_forms(
+    db: Session = Depends(get_db),
+    _: None = Depends(admin_required)
+):
     settings = db.query(models.SystemSettings).first()
 
     if not settings:

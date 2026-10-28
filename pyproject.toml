@@ -1,7 +1,7 @@
 [project]
 name = "syllabus-feedback-system"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Comprehensive feedback collection and analytics system for college syllabi"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -11,11 +11,13 @@ dependencies = [
     "fastapi[standard]>=0.127.0",
     "jinja2>=3.1.6",
     "passlib[bcrypt]>=1.7.4",
+    "psycopg2-binary>=2.9.9",
     "pydantic>=2.12.5",
     "pymysql>=1.1.2",
     "python-dotenv>=1.2.1",
     "python-jose>=3.5.0",
     "python-multipart>=0.0.21",
     "sqlalchemy>=2.0.45",
+    "supabase>=2.10.0",
     "uvicorn>=0.40.0",
 ]
