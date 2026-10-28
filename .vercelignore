@@ -1,0 +1,20 @@
+# Vercel Ignore File
+# Excludes local environments and temporary caches from deployment bundle
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.env
+.env.local
+.env.*.local
+.pytest_cache/
+.DS_Store
+*.db
+*.sqlite3
+test_temp.db
+

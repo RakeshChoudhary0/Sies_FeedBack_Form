@@ -10,8 +10,10 @@ except ImportError:
     from app.database import SessionLocal
 from datetime import datetime
 
+from pathlib import Path
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["now"] = datetime.now
 
 def get_db():

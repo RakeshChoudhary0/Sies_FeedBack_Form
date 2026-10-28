@@ -45,11 +45,16 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+# Resolve absolute paths for Vercel and local environments
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "static"
+TEMPLATES_DIR = APP_DIR / "templates"
+
 # Mount static files for images and JS
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Configure Jinja2 to look in the templates folder
-templates = Jinja2Templates(directory="app/templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 from fastapi.responses import RedirectResponse
 
